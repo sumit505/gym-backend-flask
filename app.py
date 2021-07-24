@@ -5,9 +5,12 @@ from flask_sqlalchemy import SQLAlchemy
 import json
 import sys
 from flask_cors import CORS, cross_origin
+from flask import send_file
+from flask_marshmallow import Marshmallow
 
 print(sys.path)
 app = Flask(__name__)
+ma = Marshmallow(app)
 CORS(app, support_credentials=True)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///gymDB.sqlite"
 db = SQLAlchemy(app)
@@ -20,6 +23,22 @@ class User(db.Model):
     gender = db.Column(db.String, nullable=False)
     age = db.Column(db.Integer, nullable=False)
 
+class UserSchema(ma.Schema):
+    class Meta:
+        # Fields to expose
+        fields = ("id", "name", "email", "password", "gender", "age")
+
+    # Smart hyperlinking
+    _links = ma.Hyperlinks(
+        {
+            "self": ma.URLFor("user_detail", values=dict(id="<id>")),
+            "collection": ma.URLFor("users"),
+        }
+    )
+
+user_schema = UserSchema()
+users_schema = UserSchema(many=True)
+
 def __init__(self, name, email, password, gender, age):
    self.name = name
    self.email = email
@@ -27,15 +46,15 @@ def __init__(self, name, email, password, gender, age):
    self.gender = gender
    self.age = age
 
-@app.route('/hello/', methods=['GET', 'POST'])
-def welcome():
+@app.route('/download/', methods=['GET'])
+def download():
     users = User.query.all()
-    response = app.response_class(
-        response = json.dumps(User.serialize_list(users)),
-        status = 201,
-        mimetype='application/json'
-    )
-    return response
+    userJson = users_schema.dump(users)
+    a_file = open("users.json", "w")
+    json.dump(userJson, a_file)
+    a_file.close()
+    path = "users.json"
+    return send_file(path, as_attachment=True)
 
 @app.route('/api/login/', methods=['POST'])
 @cross_origin(supports_credentials=True)
