@@ -10,14 +10,16 @@ from werkzeug.security import safe_str_cmp
 from functools import wraps
 import jwt
 import datetime
+from flask_bcrypt import Bcrypt
 
 print(sys.path)
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'JustStringForTokenForSumitFitness'
 ma = Marshmallow(app)
 CORS(app, support_credentials=True)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///gymDB.sqlite"
 db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
+app.config['SECRET_KEY'] = 'JustStringForTokenForSumitFitness'
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///gymDB.sqlite"
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -49,7 +51,7 @@ def __init__(self, name, email, password, gender, age):
    self.password = password
    self.gender = gender
    self.age = age
-
+   
 def authenticate(func):
     @wraps(func)
     def wrapped(*args, **kwargs):
@@ -84,7 +86,7 @@ def login():
     if not user:
         return jsonify({'message': 'Email is not registered'}), 403
     token = jwt.encode({ 'user': email }, app.config['SECRET_KEY'], algorithm="HS256")
-    if user.password == password:
+    if bcrypt.check_password_hash(user.password, password):
         return jsonify({'token': token }), 201
     else:
         return jsonify({'message': 'Password mismatch'}), 403
@@ -94,7 +96,11 @@ def login():
 @cross_origin(supports_credentials=True)
 def register():
     input = json.loads(request.data)
-    user = User(name = input['name'], email = input['email'], password = input['password'], gender = input['gender'], age = input['age'])
+    user = User.query.filter(User.email.in_([input['email']])).first()
+    if user:
+        return jsonify({'message': 'Email already registered'}), 400
+    hashedPassword = bcrypt.generate_password_hash(input['password'])
+    user = User(name = input['name'], email = input['email'], password = hashedPassword, gender = input['gender'], age = input['age'])
     db.session.add(user)
     db.session.commit()
     response = app.response_class(
