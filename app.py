@@ -1,15 +1,19 @@
-from flask import Flask
+from flask import Flask, jsonify, make_response
 from flask import request
-from flask import jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 import json
 import sys
 from flask_cors import CORS, cross_origin
 from flask import send_file
 from flask_marshmallow import Marshmallow
+from werkzeug.security import safe_str_cmp
+from functools import wraps
+import jwt
+import datetime
 
 print(sys.path)
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'JustStringForTokenForSumitFitness'
 ma = Marshmallow(app)
 CORS(app, support_credentials=True)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///gymDB.sqlite"
@@ -46,7 +50,21 @@ def __init__(self, name, email, password, gender, age):
    self.gender = gender
    self.age = age
 
+def authenticate(func):
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        token = request.args.get('token')
+        if not token:
+            return jsonify({"message": "Missing token"}), 403
+        try:
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        except:
+            return jsonify({"message": "Invalid token"}), 403
+        return func(*args, **kwargs)
+    return wrapped
+
 @app.route('/download/', methods=['GET'])
+@authenticate
 def download():
     users = User.query.all()
     userJson = users_schema.dump(users)
@@ -63,16 +81,13 @@ def login():
     email = input['email']
     password = input['password']
     user = User.query.filter(User.email.in_([email])).first()
+    if not user:
+        return jsonify({'message': 'Email is not registered'}), 403
+    token = jwt.encode({ 'user': email }, app.config['SECRET_KEY'], algorithm="HS256")
     if user.password == password:
-        return app.response_class(
-            response = "Login successful",
-            status = 201    
-        )
+        return jsonify({'token': token }), 201
     else:
-        return app.response_class(
-            response = "Email/Password incorrect",
-            status = 400    
-        )
+        return jsonify({'message': 'Password mismatch'}), 403
 
 
 @app.route('/api/register/', methods=['POST'])
@@ -88,4 +103,4 @@ def register():
     return response
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=105)
+    app.run(debug=True, host='127.0.0.1', port=105)
