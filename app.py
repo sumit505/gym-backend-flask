@@ -65,6 +65,10 @@ def authenticate(func):
         return func(*args, **kwargs)
     return wrapped
 
+@app.route('/', methods=['GET'])
+def home():
+    return "Your welcome to sumit fitness"
+
 @app.route('/download/', methods=['GET'])
 @authenticate
 def download():
