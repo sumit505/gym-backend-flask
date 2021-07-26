@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, make_response
+from flask import Flask, jsonify, make_response, render_template
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 import json
@@ -67,7 +67,7 @@ def authenticate(func):
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Your welcome to sumit fitness"
+    return render_template('index.html')
 
 @app.route('/download/', methods=['GET'])
 @authenticate
