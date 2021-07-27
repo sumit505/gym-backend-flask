@@ -1,1 +1,1 @@
-[]
+[{"title": "Monthly", "cost": 30.0, "members": [{"email": "sumitfitness@admin.com", "gender": "male", "password": "$2b$12$TvyxssmZUVTKjV.J/s48/ukgXbmdIiKt8R7CDR2m1tmO9BGmkiKwm", "age": 35, "type": "admin", "name": "Admin", "membership_id": 1, "id": 1}], "id": 1}, {"title": "Quarterly", "cost": 80.0, "members": [], "id": 2}, {"title": "Yearly", "cost": 200.0, "members": [], "id": 3}]

@@ -12,7 +12,6 @@ import jwt
 import datetime
 from flask_bcrypt import Bcrypt
 
-print(sys.path)
 app = Flask(__name__)
 ma = Marshmallow(app)
 CORS(app, support_credentials=True)
@@ -28,11 +27,19 @@ class User(db.Model):
     password = db.Column(db.String, nullable=False)
     gender = db.Column(db.String, nullable=False)
     age = db.Column(db.Integer, nullable=False)
+    type = db.Column(db.String, nullable=False, default='member')
+    membership_id = db.Column(db.Integer, db.ForeignKey('membership.id'), nullable=False)
+    
+class Membership(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String, nullable=False)
+    cost = db.Column(db.Float, nullable=False)
+    members = db.relationship('User', backref='member', lazy = True)
 
 class UserSchema(ma.Schema):
     class Meta:
         # Fields to expose
-        fields = ("id", "name", "email", "password", "gender", "age")
+        fields = ("id", "name", "email", "password", "gender", "age", "type", "membership_id")
 
     # Smart hyperlinking
     _links = ma.Hyperlinks(
@@ -42,15 +49,27 @@ class UserSchema(ma.Schema):
         }
     )
 
+class MembershipSchema(ma.Schema):
+    members = ma.Nested(UserSchema, many=True)
+    class Meta:
+        # Fields to expose
+        fields = ("id", "title", "cost", "members")
+
+    # Smart hyperlinking
+    _links = ma.Hyperlinks(
+        {
+            "self": ma.URLFor("membership_detail", values=dict(id="<id>")),
+            "collection": ma.URLFor("memberships"),
+        }
+    )
+
 user_schema = UserSchema()
 users_schema = UserSchema(many=True)
 
-def __init__(self, name, email, password, gender, age):
-   self.name = name
-   self.email = email
-   self.password = password
-   self.gender = gender
-   self.age = age
+membership_schema = MembershipSchema()
+memberships_schema = MembershipSchema(many=True)
+
+db.create_all()
    
 def authenticate(func):
     @wraps(func)
@@ -69,16 +88,42 @@ def authenticate(func):
 def home():
     return render_template('index.html')
 
+@app.route('/initialize', methods=['PUT'])
+def initialize():
+    User.query.delete()
+    Membership.query.delete()
+    membership = Membership(title = "Monthly", cost = 30.00)
+    db.session.add(membership)
+    db.session.commit()
+    membership = Membership(title = "Quarterly", cost = 80.00)
+    db.session.add(membership)
+    db.session.commit()
+    membership = Membership(title = "Yearly", cost = 200.00)
+    db.session.add(membership)
+    db.session.commit()
+    hashedPassword = bcrypt.generate_password_hash('iamadmin')
+    User.query.delete()
+    user = User(name = "Admin", email = "sumitfitness@admin.com", password = hashedPassword, gender = "male", age = 35, type="admin", membership_id = 1)
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({'message': "done"}), 201
+
 @app.route('/download/', methods=['GET'])
 @authenticate
 def download():
-    users = User.query.all()
-    userJson = users_schema.dump(users)
+    list = Membership.query.all()
+    jsonData = memberships_schema.dump(list)
     a_file = open("users.json", "w")
-    json.dump(userJson, a_file)
+    json.dump(jsonData, a_file)
     a_file.close()
     path = "users.json"
     return send_file(path, as_attachment=True)
+
+@app.route('/api/memberships/', methods=['GET'])
+def membershipList():
+    list = Membership.query.with_entities(Membership.id, Membership.title, Membership.cost).all()
+    membershipJson = memberships_schema.dump(list)
+    return jsonify({ 'list' : membershipJson })
 
 @app.route('/api/login/', methods=['POST'])
 @cross_origin(supports_credentials=True)
@@ -90,8 +135,11 @@ def login():
     if not user:
         return jsonify({'message': 'Email is not registered'}), 403
     token = jwt.encode({ 'user': email }, app.config['SECRET_KEY'], algorithm="HS256")
+    userJson = user_schema.dump(user)
+    membership = Membership.query.with_entities(Membership.title, Membership.cost).filter(Membership.id.in_([user.membership_id])).first()
+    membershipJson = membership_schema.dump(membership)
     if bcrypt.check_password_hash(user.password, password):
-        return jsonify({'token': token }), 201
+        return jsonify({'token': token, 'user': userJson, 'membership': membershipJson }), 201
     else:
         return jsonify({'message': 'Password mismatch'}), 403
 
@@ -104,12 +152,13 @@ def register():
     if user:
         return jsonify({'message': 'Email already registered'}), 400
     hashedPassword = bcrypt.generate_password_hash(input['password'])
-    user = User(name = input['name'], email = input['email'], password = hashedPassword, gender = input['gender'], age = input['age'])
+    user = User(name = input['name'], email = input['email'], password = hashedPassword, gender = input['gender'], age = input['age'], membership_id = input['membership_id'])
     db.session.add(user)
     db.session.commit()
-    response = app.response_class(
-        status = 201,
-    )
+    userJson = user_schema.dump(user)
+    response = jsonify({
+        'user': userJson
+    }), 201
     return response
 
 if __name__ == '__main__':
